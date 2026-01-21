@@ -2,7 +2,7 @@
 ## Title: MacroCreatorHelper
 ## Notes: Macro builder with drag and drop for spells and items.
 ## Author: MacroCreatorHelper
-## Version: 0.1.0
+## Version: 0.1.1
 ## SavedVariables: MacroCreatorHelperDB
 MacroCreatorHelper_Util.lua
 MacroCreatorHelper_Builder.lua

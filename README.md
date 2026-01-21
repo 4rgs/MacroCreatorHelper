@@ -19,9 +19,14 @@ MacroCreatorHelper is a World of Warcraft addon for building macros with a guide
 4) Use **Create/Update** to save the macro in the Blizzard macro panel.
 
 ## Versioning
-This addon uses semantic versioning. The current version is `0.1.0` (see `MacroCreatorHelper.toc`).
+This addon uses semantic versioning. The current version is `0.1.1` (see `MacroCreatorHelper.toc`).
 
 ## Changelog
+### 0.1.1
+- Added macro picker to load existing macros and a new-macro name helper.
+- Added condition selectors for stance/form, combat state, and target reaction.
+- Auto-parses `#showtooltip` when loading macros and syncs the tooltip input.
+
 ### 0.1.0
 - Initial release of the macro builder UI and core logic.
 - Drag & drop support for spells/items and castsequence building.

@@ -16,6 +16,15 @@ function MCH.builder.BuildCondition(state)
   if state.modAlt then
     table.insert(parts, "mod:alt")
   end
+  if state.stanceMode and state.stanceMode ~= "none" then
+    table.insert(parts, state.stanceMode)
+  end
+  if state.combatMode and state.combatMode ~= "none" then
+    table.insert(parts, state.combatMode)
+  end
+  if state.reactionMode and state.reactionMode ~= "none" then
+    table.insert(parts, state.reactionMode)
+  end
   local eqText = util.Trim(state.equippedItem)
   if eqText ~= "" then
     if state.equippedMode == "equipped" then

@@ -11,6 +11,183 @@ local function SetStatus(text)
   end
 end
 
+local UpdateShowTooltipLayout
+
+local function ApplyShowTooltipFromBody(body)
+  if not ui.showTooltipCheck then
+    return
+  end
+  local show = false
+  local value = ""
+  if body and body ~= "" then
+    local firstLine = body:match("^[^\r\n]+")
+    if firstLine then
+      local lower = firstLine:lower()
+      if lower:match("^#showtooltip") then
+        show = true
+        local arg = firstLine:match("^#showtooltip%s+(.+)$")
+        if arg then
+          value = util.Trim(arg)
+        end
+      end
+    end
+  end
+  ui.showTooltipCheck:SetChecked(show)
+  if ui.showTooltipBox then
+    ui.showTooltipBox:SetText(value)
+  end
+  UpdateShowTooltipLayout()
+end
+
+local function GetMacroEntries()
+  local entries = {}
+  if not GetNumMacros or not GetMacroInfo then
+    return entries, 0
+  end
+  local maxGlobal = MAX_ACCOUNT_MACROS or 18
+  local maxChar = MAX_CHARACTER_MACROS or 18
+  local total = maxGlobal + maxChar
+  for index = 1, total do
+    local name = GetMacroInfo(index)
+    if name and name ~= "" then
+      entries[#entries + 1] = { name = name, index = index }
+    end
+  end
+  return entries, maxGlobal
+end
+
+local function BuildMacroListItems(entries, maxGlobal)
+  local items = {}
+  items[#items + 1] = { label = "Select Macro", value = "" }
+  for _, entry in ipairs(entries) do
+    local prefix = entry.index > maxGlobal and "[Char] " or "[Global] "
+    items[#items + 1] = {
+      label = prefix .. entry.name,
+      value = entry.index,
+      name = entry.name,
+    }
+  end
+  items[#items + 1] = { label = "Create New Macro...", value = "__new" }
+  return items
+end
+
+local function GenerateNewMacroName()
+  local entries = GetMacroEntries()
+  local existing = {}
+  for _, entry in ipairs(entries) do
+    existing[entry.name] = true
+  end
+  local base = "New Macro"
+  if not existing[base] then
+    return base
+  end
+  local i = 1
+  while existing[base .. " " .. i] do
+    i = i + 1
+  end
+  return base .. " " .. i
+end
+
+local function LoadMacroByIndex(index)
+  if not index or not GetMacroInfo then
+    return
+  end
+  local name, icon, body = GetMacroInfo(index)
+  if not name or name == "" then
+    return
+  end
+  ui.nameBox:SetText(name)
+  ui.bodyBox:SetText(body or "")
+  local texture = icon or "Interface\\Icons\\INV_Misc_QuestionMark"
+  ui.icon:SetTexture(texture)
+  ui.iconTexture = texture
+  local maxGlobal = ui.macroMaxGlobal or (MAX_ACCOUNT_MACROS or 18)
+  if ui.charOnly then
+    ui.charOnly:SetChecked(index > maxGlobal)
+  end
+  if ui.newMacroLabel then
+    ui.newMacroLabel:SetText("")
+  end
+  ApplyShowTooltipFromBody(body or "")
+  SetStatus("Loaded macro: " .. name)
+end
+
+local function HandleMacroSelection(value)
+  if not value or value == "" then
+    if ui.newMacroLabel then
+      ui.newMacroLabel:SetText("")
+    end
+    return
+  end
+  if value == "__new" then
+    local newName = GenerateNewMacroName()
+    ui.nameBox:SetText(newName)
+    ui.bodyBox:SetText("")
+    local texture = "Interface\\Icons\\INV_Misc_QuestionMark"
+    ui.icon:SetTexture(texture)
+    ui.iconTexture = texture
+    if ui.newMacroLabel then
+      ui.newMacroLabel:SetText("New macro: " .. newName)
+    end
+    if ui.showTooltipCheck then
+      ui.showTooltipCheck:SetChecked(false)
+      if ui.showTooltipBox then
+        ui.showTooltipBox:SetText("")
+      end
+      UpdateShowTooltipLayout()
+    end
+    if ui.macroListDrop then
+      UIDropDownMenu_SetText(ui.macroListDrop, newName)
+    end
+    SetStatus("Ready to create: " .. newName)
+    return
+  end
+  local index = tonumber(value)
+  if index then
+    LoadMacroByIndex(index)
+  end
+end
+
+local function RefreshMacroListDropdown(selectedName)
+  if not ui.macroListDrop then
+    return
+  end
+  local entries, maxGlobal = GetMacroEntries()
+  ui.macroMaxGlobal = maxGlobal
+  ui.macroListItems = BuildMacroListItems(entries, maxGlobal)
+  UIDropDownMenu_Initialize(ui.macroListDrop, function(_, level)
+    for _, item in ipairs(ui.macroListItems) do
+      local info = UIDropDownMenu_CreateInfo()
+      info.text = item.label
+      info.value = item.value
+      info.func = function()
+        UIDropDownMenu_SetSelectedValue(ui.macroListDrop, item.value)
+        UIDropDownMenu_SetText(ui.macroListDrop, item.label)
+        HandleMacroSelection(item.value)
+      end
+      UIDropDownMenu_AddButton(info, level)
+    end
+  end)
+  local selectedLabel = nil
+  local selectedValue = nil
+  if selectedName and selectedName ~= "" then
+    for _, item in ipairs(ui.macroListItems) do
+      if item.name == selectedName then
+        selectedLabel = item.label
+        selectedValue = item.value
+        break
+      end
+    end
+  end
+  if selectedLabel then
+    UIDropDownMenu_SetSelectedValue(ui.macroListDrop, selectedValue)
+    UIDropDownMenu_SetText(ui.macroListDrop, selectedLabel)
+  else
+    UIDropDownMenu_SetSelectedValue(ui.macroListDrop, ui.macroListItems[1].value)
+    UIDropDownMenu_SetText(ui.macroListDrop, ui.macroListItems[1].label)
+  end
+end
+
 local function LayoutGroups()
   if not ui.left or not ui.leftGroups then
     return
@@ -66,7 +243,7 @@ local function UpdateEquipGroupLayout()
   LayoutGroups()
 end
 
-local function UpdateShowTooltipLayout()
+UpdateShowTooltipLayout = function()
   if not ui.showTooltipGroup or not ui.showTooltipCheck then
     return
   end
@@ -173,6 +350,9 @@ function ui.CollectState()
     modShift = ui.modShift:GetChecked(),
     modCtrl = ui.modCtrl:GetChecked(),
     modAlt = ui.modAlt:GetChecked(),
+    stanceMode = ui.stanceMode or "none",
+    combatMode = ui.combatMode or "none",
+    reactionMode = ui.reactionMode or "none",
     equippedMode = equippedMode,
     equippedItem = equippedItem,
     resetTarget = ui.resetTarget:GetChecked(),
@@ -368,6 +548,7 @@ function ui.Toggle()
   if ui.frame:IsShown() then
     ui.frame:Hide()
   else
+    RefreshMacroListDropdown()
     ui.frame:Show()
   end
 end
@@ -452,7 +633,7 @@ local function CreateMainFrame()
     UpdateShowTooltipLayout()
   end)
 
-  local nameGroup = CreateLeftGroup(32)
+  local nameGroup = CreateLeftGroup(88)
   local nameLabel = nameGroup:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   nameLabel:SetPoint("TOPLEFT", nameGroup, "TOPLEFT", 0, 0)
   nameLabel:SetText("Macro Name")
@@ -463,6 +644,18 @@ local function CreateMainFrame()
   ui.charOnly = CreateFrame("CheckButton", nil, nameGroup, "UICheckButtonTemplate")
   ui.charOnly:SetPoint("LEFT", ui.nameBox, "RIGHT", 8, 0)
   util.SetCheckboxLabel(ui.charOnly, "Char")
+
+  local macroListLabel = nameGroup:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  macroListLabel:SetPoint("TOPLEFT", nameLabel, "BOTTOMLEFT", 0, -10)
+  macroListLabel:SetText("Existing Macros")
+
+  ui.macroListDrop = CreateFrame("Frame", nil, nameGroup, "UIDropDownMenuTemplate")
+  UIDropDownMenu_SetWidth(ui.macroListDrop, 180)
+  ui.macroListDrop:SetPoint("TOPLEFT", macroListLabel, "BOTTOMLEFT", -16, -2)
+
+  ui.newMacroLabel = nameGroup:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  ui.newMacroLabel:SetPoint("TOPLEFT", ui.macroListDrop, "BOTTOMLEFT", 16, -2)
+  ui.newMacroLabel:SetText("")
 
   local objectiveGroup = CreateLeftGroup(40)
   local actionTypeLabel = objectiveGroup:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -534,7 +727,7 @@ local function CreateMainFrame()
   end)
   ui.actionSlotDrop:SetPoint("LEFT", ui.actionSlotBox, "RIGHT", 8, 0)
 
-  ui.sequenceGroup = CreateLeftGroup(90)
+  ui.sequenceGroup = CreateLeftGroup(120)
 
   local sequenceLabel = ui.sequenceGroup:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   sequenceLabel:SetPoint("TOPLEFT", ui.sequenceGroup, "TOPLEFT", 0, 0)
@@ -542,6 +735,25 @@ local function CreateMainFrame()
 
   ui.sequenceScroll, ui.sequenceBox = util.CreateScrollEditBox(ui.sequenceGroup, 210, 60)
   ui.sequenceScroll:SetPoint("TOPLEFT", ui.sequenceGroup, "TOPLEFT", 110, -4)
+
+  ui.sequenceDropLabel = ui.sequenceGroup:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  ui.sequenceDropLabel:SetPoint("TOPLEFT", ui.sequenceGroup, "TOPLEFT", 0, -72)
+  ui.sequenceDropLabel:SetText("Add Spell")
+
+  ui.sequenceDropBox = util.CreateEditBox(ui.sequenceGroup, 210, 20)
+  ui.sequenceDropBox:SetPoint("TOPLEFT", ui.sequenceGroup, "TOPLEFT", 110, -76)
+  ui.sequenceDropBox:SetScript("OnEditFocusGained", function(self)
+    self:ClearFocus()
+  end)
+  ui.sequenceDropBox:SetScript("OnTextChanged", function(self, userInput)
+    if userInput and self:GetText() ~= "" then
+      self:SetText("")
+    end
+  end)
+
+  ui.sequenceDropHint = ui.sequenceDropBox:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+  ui.sequenceDropHint:SetPoint("LEFT", ui.sequenceDropBox, "LEFT", 6, 0)
+  ui.sequenceDropHint:SetText("Drag & drop spell")
 
   ui.resetGroup = CreateLeftGroup(70)
 
@@ -576,7 +788,7 @@ local function CreateMainFrame()
   ui.resetTime = util.CreateEditBox(ui.resetGroup, 50, 20)
   ui.resetTime:SetPoint("LEFT", resetTimeLabel, "RIGHT", 6, 0)
 
-  local targetGroup = CreateLeftGroup(40)
+  local targetGroup = CreateLeftGroup(66)
   local targetLabel = targetGroup:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   targetLabel:SetPoint("TOPLEFT", targetGroup, "TOPLEFT", 0, 0)
   targetLabel:SetText("Target")
@@ -594,7 +806,23 @@ local function CreateMainFrame()
   ui.targetDrop = util.CreateDropdown(targetGroup, 140, targetItems, SetTargetUnit)
   ui.targetDrop:SetPoint("TOPLEFT", targetLabel, "TOPRIGHT", 8, -6)
 
-  local condGroup = CreateLeftGroup(36)
+  local reactionItems = {
+    { label = "None", value = "none" },
+    { label = "Friendly", value = "help" },
+    { label = "Hostile", value = "harm" },
+  }
+
+  local reactionLabel = targetGroup:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  reactionLabel:SetPoint("TOPLEFT", ui.targetDrop, "BOTTOMLEFT", 16, -2)
+  reactionLabel:SetText("Reaction")
+
+  ui.reactionMode = "none"
+  ui.reactionDrop = util.CreateDropdown(targetGroup, 120, reactionItems, function(value)
+    ui.reactionMode = value
+  end)
+  ui.reactionDrop:SetPoint("TOPLEFT", reactionLabel, "BOTTOMLEFT", -16, -2)
+
+  local condGroup = CreateLeftGroup(78)
   local condLabel = condGroup:CreateFontString(nil, "OVERLAY", "GameFontNormal")
   condLabel:SetPoint("TOPLEFT", condGroup, "TOPLEFT", 0, 0)
   condLabel:SetText("Modifiers")
@@ -610,6 +838,42 @@ local function CreateMainFrame()
   ui.modAlt = CreateFrame("CheckButton", nil, condGroup, "UICheckButtonTemplate")
   ui.modAlt:SetPoint("LEFT", ui.modCtrl, "RIGHT", 8, 0)
   util.SetCheckboxLabel(ui.modAlt, "Alt")
+
+  local stanceItems = {
+    { label = "None", value = "none" },
+    { label = "Any Stance/Form", value = "stance" },
+    { label = "Stance/Form 1", value = "stance:1" },
+    { label = "Stance/Form 2", value = "stance:2" },
+    { label = "Stance/Form 3", value = "stance:3" },
+    { label = "Stance/Form 4", value = "stance:4" },
+    { label = "Stance/Form 5", value = "stance:5" },
+  }
+
+  local combatItems = {
+    { label = "None", value = "none" },
+    { label = "In Combat", value = "combat" },
+    { label = "Out of Combat", value = "nocombat" },
+  }
+
+  local stanceLabel = condGroup:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  stanceLabel:SetPoint("TOPLEFT", ui.modShift, "BOTTOMLEFT", 0, -6)
+  stanceLabel:SetText("Stance/Form")
+
+  local combatLabel = condGroup:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+  combatLabel:SetPoint("TOPLEFT", stanceLabel, "TOPLEFT", 160, 0)
+  combatLabel:SetText("Combat")
+
+  ui.stanceMode = "none"
+  ui.stanceDrop = util.CreateDropdown(condGroup, 110, stanceItems, function(value)
+    ui.stanceMode = value
+  end)
+  ui.stanceDrop:SetPoint("TOPLEFT", stanceLabel, "BOTTOMLEFT", -16, -2)
+
+  ui.combatMode = "none"
+  ui.combatDrop = util.CreateDropdown(condGroup, 100, combatItems, function(value)
+    ui.combatMode = value
+  end)
+  ui.combatDrop:SetPoint("TOPLEFT", combatLabel, "BOTTOMLEFT", -16, -2)
 
   ui.equipGroup = CreateLeftGroup(56)
   local equipLabel = ui.equipGroup:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -726,10 +990,23 @@ local function CreateMainFrame()
     UIDropDownMenu_SetSelectedValue(ui.actionSlotDrop, ui.actionSlotItems[1].value)
     UIDropDownMenu_SetText(ui.actionSlotDrop, ui.actionSlotItems[1].label)
   end
+  if ui.reactionDrop then
+    UIDropDownMenu_SetSelectedValue(ui.reactionDrop, reactionItems[1].value)
+    UIDropDownMenu_SetText(ui.reactionDrop, reactionItems[1].label)
+  end
+  if ui.stanceDrop then
+    UIDropDownMenu_SetSelectedValue(ui.stanceDrop, stanceItems[1].value)
+    UIDropDownMenu_SetText(ui.stanceDrop, stanceItems[1].label)
+  end
+  if ui.combatDrop then
+    UIDropDownMenu_SetSelectedValue(ui.combatDrop, combatItems[1].value)
+    UIDropDownMenu_SetText(ui.combatDrop, combatItems[1].label)
+  end
 
   SetActionType(actionTypeItems[1].value)
   SetTargetUnit(targetItems[1].value)
   UpdateShowTooltipLayout()
+  RefreshMacroListDropdown()
   SetupSpellbookHook()
 
   ui.actionBox:SetScript("OnReceiveDrag", function()
@@ -745,6 +1022,15 @@ local function CreateMainFrame()
     HandleDrop(true)
   end)
   ui.sequenceBox:SetScript("OnMouseUp", function(_, button)
+    if button == "LeftButton" then
+      HandleDrop(true)
+    end
+  end)
+
+  ui.sequenceDropBox:SetScript("OnReceiveDrag", function()
+    HandleDrop(true)
+  end)
+  ui.sequenceDropBox:SetScript("OnMouseUp", function(_, button)
     if button == "LeftButton" then
       HandleDrop(true)
     end
@@ -816,6 +1102,7 @@ local function CreateMainFrame()
         SetStatus("Macro created.")
         util.Print("Macro created: " .. name)
       end
+      RefreshMacroListDropdown(name)
     else
       SetStatus(status or "Failed to create macro.")
       util.Print(status or "Failed to create macro.")
